@@ -1,0 +1,6 @@
+.env
+./venv
+__pycache__/
+digest_*.txt
+URGENT_*.txt
+.DS_Store
