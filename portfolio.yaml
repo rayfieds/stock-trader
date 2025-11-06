@@ -43,7 +43,7 @@ preferences:
   # What sectors do you like?
   preferred_sectors:
     - "financials"                 # Banks, insurance
-    - "energy"                     # Oil & gas
+    # - "energy"                     # Oil & gas
     - "infrastructure"             # Railways, utilities
     - "technology"                 # Canadian tech
   
