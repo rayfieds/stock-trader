@@ -4,3 +4,4 @@ __pycache__/
 digest_*.txt
 URGENT_*.txt
 .DS_Store
+portfolio.yaml
