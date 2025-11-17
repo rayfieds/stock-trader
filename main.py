@@ -11,6 +11,7 @@ import requests
 from dotenv import load_dotenv
 import regex as re
 import markdown
+from portfolio_loader import load_portfolio_from_secret
 
 load_dotenv()
 
@@ -20,7 +21,9 @@ class LongTermStockAgent:
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
         self.model = genai.GenerativeModel('gemini-2.0-flash')
         
-        self.load_config(config_path)
+        config = load_portfolio_from_secret()
+        self.portfolio = config['portfolio']
+        self.cash = config['cash']
         self.tsx_top_stocks = self._get_tsx_top_stocks()
         
         # News API key (optional - for enhanced news)
@@ -682,7 +685,7 @@ Be concise - 2-3 sentences max."""
         # Get news sentiment for portfolio + watchlist
         news_insights = {}
         print("📰 Fetching news sentiment...")
-        
+
         tickers_to_check = list(self.portfolio.keys()) + self.watchlist
         for ticker in tickers_to_check:
             news = self.get_news_sentiment(ticker, days=1 if session == 'afternoon' else 3)
