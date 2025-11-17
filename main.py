@@ -16,25 +16,12 @@ from portfolio_loader import load_portfolio_from_secret
 load_dotenv()
 
 class LongTermStockAgent:
-    def __init__(self, config_path='portfolio.yaml'):
+    def __init__(self):
         """Initialize agent for long-term growth investing"""
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
         self.model = genai.GenerativeModel('gemini-2.0-flash')
         
         config = load_portfolio_from_secret()
-        self.portfolio = config['portfolio']
-        self.cash = config['cash']
-        self.tsx_top_stocks = self._get_tsx_top_stocks()
-        
-        # News API key (optional - for enhanced news)
-        self.news_api_key = os.getenv("NEWS_API_KEY")  # Get free at newsapi.org
-        self.alphavantage_key = os.getenv("ALPHAVANTAGE_API_KEY")  # alpha vantage news
-        
-    def load_config(self, config_path):
-        """Load portfolio and preferences from YAML"""
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        
         self.portfolio = config['portfolio']
         self.cash = config['cash']
         self.watchlist = config.get('watchlist', [])
@@ -44,6 +31,11 @@ class LongTermStockAgent:
         
         print(f"✓ Portfolio loaded: {len(self.portfolio)} positions, ${self.cash:,.2f} CAD cash")
         print(f"✓ Personal watchlist: {len(self.watchlist)} stocks")
+        self.tsx_top_stocks = self._get_tsx_top_stocks()
+        
+        # News API key (optional - for enhanced news)
+        self.news_api_key = os.getenv("NEWS_API_KEY")  # Get free at newsapi.org
+        self.alphavantage_key = os.getenv("ALPHAVANTAGE_API_KEY")  # alpha vantage news
         
     def get_news_sentiment(self, ticker, days=3):
         """Get news headlines and sentiment for a stock
@@ -1078,6 +1070,6 @@ if __name__ == "__main__":
         print("❌ Invalid session. Use: python stock_agent.py morning  OR  python stock_agent.py afternoon")
         sys.exit(1)
     
-    agent = LongTermStockAgent('portfolio.yaml')
+    agent = LongTermStockAgent()
     digest = agent.generate_daily_digest(session=session)
     agent.send_notification(digest, session=session)
