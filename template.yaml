@@ -1,0 +1,95 @@
+# Canadian Long-Term Growth Portfolio
+# All prices in CAD, TSX tickers use .TO suffix
+
+# Your current holdings (ticker: number of shares)
+# Can include both individual stocks AND ETFs
+
+portfolio:
+  # Individual Stocks
+  
+  # ETFs
+
+# Available cash for new investments (CAD)
+cash: 9000.00
+
+# YOUR personal watchlist - stocks AND ETFs you want to monitor specifically
+# The AI will ALSO scan all major TSX stocks + popular ETFs automatically
+# This watchlist is just for securities YOU care about tracking closely
+
+watchlist:
+  # Individual stocks you're watching
+  
+  # ETFs you're considering
+
+# Investment strategy and preferences
+preferences:
+  strategy: "long-term growth"     # Not day trading!
+  
+  time_horizon: "5-10 years"       # How long you plan to hold
+  
+  risk_tolerance: "moderate"       # conservative, moderate, aggressive
+  
+  # What sectors do you like?
+  preferred_sectors:
+  
+  # What to avoid
+  avoid_sectors:
+    
+  # Position sizing rules
+  position_sizing:
+    max_position_percent: 15       # Don't put >15% in one stock
+    min_cash_reserve: 5000         # Always keep $5k cash minimum
+    typical_buy_amount: 2000       # Usually invest $2k at a time
+    max_buy_amount: 5000           # Never more than $5k in one purchase
+  
+  # Quality filters
+  quality_requirements:
+    min_market_cap: 1000000000     # $1B minimum (avoid small caps)
+    min_quality_score: 6           # Only consider stocks scoring 6+/10
+    prefer_dividend_payers: true   # Like dividend stocks
+    min_dividend_yield: 2.5        # Minimum 2.5% yield for dividend stocks
+  
+  # Valuation discipline
+  valuation:
+    max_pe_ratio: 30               # Don't overpay (PE < 30)
+    prefer_peg_under: 2.0          # PEG ratio < 2 is good value
+    avoid_overvalued: true         # Skip stocks way above fair value
+  
+  # Other preferences
+  diversification:
+    max_stocks: 20                 # Don't over-diversify (10-20 stocks ideal)
+    rebalance_threshold: 20        # If position grows >20%, consider trimming
+  
+  notes: |
+    Focus on Canadian blue chips with:
+    - Strong competitive moats
+    - Consistent dividend growth
+    - Good management track record
+    - Reasonable valuations
+    
+    Not interested in:
+    - High-risk growth stocks
+    - Foreign stocks (TSX only)
+    - Complex financial instruments
+
+# Notification settings
+notification:
+  method: "email"                # Options: console, email, sms
+  
+  # For email notifications (requires setup)
+  email:
+    from_email:
+    to_email: 
+    # Set EMAIL_PASSWORD environment variable with Gmail App Password
+  
+  # For SMS (requires Twilio setup)
+  sms:
+    to_number: "+1234567890"
+    # Set TWILIO credentials in environment variables
+  
+  schedule:
+    # Two digests per day
+    morning_time: "09:30"          # Market open
+    afternoon_time: "15:00"        # Before market close (4 PM)
+    timezone: "America/Toronto"    # Eastern Time
+    days: "weekdays"               # Only on trading days
