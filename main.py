@@ -11,7 +11,8 @@ import requests
 from dotenv import load_dotenv
 import regex as re
 import markdown
-from portfolio_loader import load_portfolio_from_secret
+from portfolio_loader import load_portfolio_from_secret, calculate_gain
+from memory_system import AgentMemory
 
 load_dotenv()
 
@@ -28,6 +29,7 @@ class LongTermStockAgent:
         self.preferences = config.get('preferences', {})
         self.notification = config.get('notification', {})
         self.alerts = config.get('alerts', {})
+        self.memory = AgentMemory()
         
         print(f"✓ Portfolio loaded: {len(self.portfolio)} positions, ${self.cash:,.2f} CAD cash")
         print(f"✓ Personal watchlist: {len(self.watchlist)} stocks")
@@ -607,23 +609,40 @@ Be concise - 2-3 sentences max."""
         holdings_analysis = []
         total_value = self.cash
         
-        for ticker, shares in self.portfolio.items():
+        for ticker, holding_info in self.portfolio.items():
+            shares = holding_info.get('shares', 0) if isinstance(holding_info, dict) else holding_info
+    
             data = self.get_stock_data(ticker)
             if data:
-                position_value = shares * data['price']
+                current_price = data['price']
+                position_value = shares * current_price
                 total_value += position_value
                 
-                holdings_analysis.append({
+                holding_data = {
                     'ticker': ticker,
                     'shares': shares,
-                    'price': data['price'],
+                    'price': current_price,
                     'value': position_value,
                     'quality_score': data['quality_score'],
                     'dividend_yield': data['dividend_yield'],
                     'year_return': data['year_return'],
                     'recommendation': self._get_holding_recommendation(data, shares, position_value)
-                })
-        
+                }
+                
+                # Calculate gains if we have buy price
+                gain_info = calculate_gain(self.portfolio, ticker, current_price)
+                
+                if gain_info:
+                    # Add gain tracking data
+                    holding_data.update({
+                        'avg_buy_price': gain_info['avg_buy_price'],
+                        'cost_basis': gain_info['cost_basis'],
+                        'gain_amount': gain_info['gain_amount'],
+                        'gain_pct': gain_info['gain_pct'],
+                    })
+                
+                holdings_analysis.append(holding_data)  
+                    
         # Calculate position percentages
         for holding in holdings_analysis:
             holding['portfolio_weight'] = round((holding['value'] / total_value * 100), 1)
@@ -656,6 +675,19 @@ Be concise - 2-3 sentences max."""
         
         return watchlist_analysis
     
+    def get_current_prices(self, tickers):
+        """Fetch current prices for multiple tickers"""
+        prices = {}
+        for ticker in tickers:
+            try:
+                stock = yf.Ticker(ticker)
+                hist = stock.history(period='1d')
+                if not hist.empty:
+                    prices[ticker] = hist['Close'].iloc[-1]
+            except:
+                prices[ticker] = None
+        return prices
+    
     def generate_daily_digest(self, session='morning'):
         """Generate digest for market open (morning) or close (afternoon)
         
@@ -671,8 +703,31 @@ Be concise - 2-3 sentences max."""
         market_opportunities = self.scan_market_opportunities()
         watchlist_analysis = self.analyze_watchlist()
 
+        self.memory.save_portfolio_snapshot(self.portfolio, self.cash, total_value)
+
         # Get macro context (oil, forex, rates)
         macro_context = self.get_macro_context()
+        
+        # Save market context to memory
+        tsx = yf.Ticker("^GSPTSE")
+        tsx_hist = tsx.history(period='2d')
+        tsx_current = tsx_hist['Close'].iloc[-1] if not tsx_hist.empty else 0
+        
+        self.memory.save_market_context(
+            tsx_level=tsx_current,
+            oil_price=macro_context['oil_prices'].get('wti', 'N/A'),
+            usd_cad=macro_context['forex'].get('usd_cad', 'N/A')
+        )
+        
+        # Get current prices for memory calculations
+        all_tickers = list(self.portfolio.keys()) + self.watchlist
+        current_prices = self.get_current_prices(all_tickers)
+        
+        # Get memory context - THIS IS THE KEY!
+        memory_context = self.memory.format_memory_for_prompt(
+            self.portfolio,
+            current_prices
+        )
         
         # Get news sentiment for portfolio + watchlist
         news_insights = {}
@@ -774,6 +829,8 @@ Focus on:
 
 {session_context}
 
+{memory_context}
+
 {emergency_section}
 
 🇨🇦 TSX MARKET
@@ -805,9 +862,13 @@ IMPORTANT:
 - If no news is available for a stock, that's NORMAL - base recommendations on fundamentals and technical analysis instead
 - Consider macro context (oil prices affect energy stocks, USD/CAD affects exporters, rates affect banks)
 - Focus on quality (score 7+) and value (reasonable PE ratios)
+- Acknowledge portfolio changes when you see them
 - Don't demand news - most days stocks don't have news and that's fine!
-
-{"**MORNING DIGEST FORMAT:**" if session == 'morning' else "**AFTERNOON DIGEST FORMAT:**"}
+- **CHECK YOUR MEMORY FIRST** - You have recommended stocks before. Don't repeat the same recommendations unless:
+  * The price has dropped significantly (5%+ from when you last recommended)
+  * New news has emerged that changes the thesis
+  * It's been 5+ days since you recommended it
+- If no news is available for a stock, that's NORMAL - base recommendations on fundamentals and technical analysis instead
 
 1. **Market Summary**: Quick TSX overview and key sector trends
 
@@ -826,7 +887,7 @@ IMPORTANT:
 5. {"**Long-term Outlook**: Any macro trends affecting Canadian market" if session == 'morning' else "**Set Up for Tomorrow**: Anything to watch overnight or tomorrow"}
 
 Keep recommendations ACTIONABLE and SPECIFIC. Focus on quality companies with:
-- Strong fundamentals (quality score 6+)
+- Strong fundamentals (quality score 7+)
 - Reasonable valuations (not overpaying)
 - Good dividend yields (3%+) preferred
 - Solid balance sheets
@@ -836,30 +897,97 @@ Keep recommendations ACTIONABLE and SPECIFIC. Focus on quality companies with:
         
         try:
             response = self.model.generate_content(prompt)
-            return response.text
+            digest_text = response.text
+            
+            # Save today's market context
+            self.memory.save_market_context(
+                tsx_level=tsx_current,
+                oil_price=macro_context['oil_prices'].get('wti', 'N/A'),
+                usd_cad=macro_context['forex'].get('usd_cad', 'N/A')
+            )
+            
+            # Get current prices for tracking
+            all_tickers = list(set(list(self.portfolio.keys()) + self.watchlist))
+            current_prices = self.get_current_prices(all_tickers)
+            
+            # Parse and save recommendations
+            self._parse_and_save_recommendations(digest_text, current_prices, session)
+            
+            return digest_text
+        
         except Exception as e:
             return f"❌ Error generating digest: {e}"
+        
+    def _parse_and_save_recommendations(self, digest_text, current_prices, session):
+        """Parse recommendations from digest and save to memory"""
+        
+        lines = digest_text.split('\n')
+        
+        for line in lines:
+            # Look for recommendation patterns
+            if any(keyword in line.upper() for keyword in ['BUY:', 'SELL:', 'HOLD:', '🟢 BUY', '🔴 SELL']):
+                
+                # Try to extract ticker (looks for .TO pattern)
+                ticker = None
+                words = line.split()
+                for word in words:
+                    if '.TO' in word.upper():
+                        # Clean up ticker (remove punctuation)
+                        ticker = word.strip(',:;()[]!?.*').upper()
+                        if ticker.endswith('.TO'):
+                            break
+                
+                if not ticker:
+                    continue
+                
+                # Extract action
+                action = 'HOLD'
+                if 'BUY' in line.upper() or '🟢' in line:
+                    action = 'BUY'
+                elif 'SELL' in line.upper() or '🔴' in line:
+                    action = 'SELL'
+                
+                # Try to find price
+                price = current_prices.get(ticker, 0)
+                if price == 0:
+                    # Try to extract from text (look for $XX.XX pattern)
+                    import re
+                    price_matches = re.findall(r'\$(\d+\.?\d*)', line)
+                    if price_matches:
+                        try:
+                            price = float(price_matches[0])
+                        except:
+                            pass
+                
+                # Get reason (the entire line is the reason)
+                reason = line.strip()[:200]  # Limit to 200 chars
+                
+                # Save to memory
+                if ticker and price > 0:
+                    self.memory.save_recommendation(ticker, action, price, reason, session)
+                    print(f"   💾 Saved recommendation: {action} {ticker} @ ${price:.2f}")
     
     def _format_portfolio_for_ai(self, analysis):
         """Format portfolio data for AI prompt"""
         lines = []
         for h in analysis:
-            lines.append(
-                f"  {h['ticker']}: {h['shares']} shares @ ${h['price']} = ${h['value']:,.0f} "
-                f"({h['portfolio_weight']}%) | Quality: {h['quality_score']}/10 | "
-                f"Div: {h['dividend_yield']}% | YTD: {h['year_return']:+.1f}% | {h['recommendation']}"
-            )
-        return '\n'.join(lines) if lines else "  (No holdings)"
-    
-    def _format_watchlist_for_ai(self, analysis):
-        """Format portfolio data for AI prompt"""
-        lines = []
-        for h in analysis:
-            lines.append(
-                f"  {h['ticker']}: {h['shares']} shares @ ${h['price']} = ${h['value']:,.0f} "
-                f"({h['portfolio_weight']}%) | Quality: {h['quality_score']}/10 | "
-                f"Div: {h['dividend_yield']}% | YTD: {h['year_return']:+.1f}% | {h['recommendation']}"
-            )
+            # Base info
+            base = (f"  {h['ticker']}: {h['shares']} shares @ ${h['price']:.2f} = ${h['value']:,.0f} "
+                    f"({h['portfolio_weight']}%)")
+            
+            # Add gain info if available
+            if 'gain_pct' in h:
+                gain = (f" | Bought @ ${h['avg_buy_price']:.2f} → "
+                    f"Gain: ${h['gain_amount']:+,.0f} ({h['gain_pct']:+.1f}%)")
+            else:
+                gain = ""
+            
+            # Quality metrics
+            metrics = (f" | Quality: {h['quality_score']}/10 | "
+                    f"Div: {h['dividend_yield']}% | {h['recommendation']}")
+            
+            lines.append(base + gain + metrics)
+        
         return '\n'.join(lines) if lines else "  (No holdings)"
     
     def _format_watchlist_for_ai(self, analysis):

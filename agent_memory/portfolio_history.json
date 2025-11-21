@@ -1,0 +1,38 @@
+{
+  "2025-11-17": {
+    "date": "2025-11-17",
+    "portfolio": {
+      "VFV.TO": {
+        "shares": 30,
+        "avg_buy_price": 163.33
+      }
+    },
+    "cash": 9000.0,
+    "total_value": 13994.4,
+    "timestamp": "2025-11-17T23:59:02.942535"
+  },
+  "2025-11-18": {
+    "date": "2025-11-18",
+    "portfolio": {
+      "VFV.TO": {
+        "shares": 30,
+        "avg_buy_price": 163.33
+      }
+    },
+    "cash": 9000.0,
+    "total_value": 13994.4,
+    "timestamp": "2025-11-18T00:07:55.081575"
+  },
+  "2025-11-21": {
+    "date": "2025-11-21",
+    "portfolio": {
+      "VFV.TO": {
+        "shares": 30,
+        "avg_buy_price": 163.33
+      }
+    },
+    "cash": 9000.0,
+    "total_value": 13956.9,
+    "timestamp": "2025-11-21T17:00:59.713308"
+  }
+}

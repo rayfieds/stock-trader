@@ -1,0 +1,74 @@
+{
+  "2025-11-17": {
+    "date": "2025-11-17",
+    "session": "afternoon",
+    "stocks": {
+      "CM.TO": {
+        "action": "BUY",
+        "price": 122.05000305175781,
+        "reason": "*   **\ud83d\udd34 BUY: CM.TO (Canadian Imperial Bank of Commerce)**",
+        "timestamp": "2025-11-17T23:59:16.325962"
+      },
+      "CNR.TO": {
+        "action": "BUY",
+        "price": 134.08999633789062,
+        "reason": "*   **\ud83d\udd34 BUY: CNR.TO (Canadian National Railway Company)**",
+        "timestamp": "2025-11-17T23:59:16.326751"
+      },
+      "XEQT.TO": {
+        "action": "BUY",
+        "price": 39.25,
+        "reason": "*   **\ud83d\udd34 BUY: XEQT.TO (iShares Core Equity ETF Portfolio)**",
+        "timestamp": "2025-11-17T23:59:16.327062"
+      },
+      "VDY.TO": {
+        "action": "BUY",
+        "price": 59.439998626708984,
+        "reason": "*   **\ud83d\udd34 BUY: VDY.TO (Vanguard FTSE Canadian High Dividend Yield Index ETF)**",
+        "timestamp": "2025-11-17T23:59:16.327308"
+      },
+      "XAW.TO": {
+        "action": "BUY",
+        "price": 51.11000061035156,
+        "reason": "*   **\ud83d\udd34 BUY: XAW.TO (iShares Core MSCI All Country World ex Canada Index ETF)**",
+        "timestamp": "2025-11-17T23:59:16.327525"
+      },
+      "XIC.TO": {
+        "action": "BUY",
+        "price": 48.06999969482422,
+        "reason": "*   **\ud83d\udd34 BUY: XIC.TO (iShares Core S&P/TSX Capped Composite Index ETF)**",
+        "timestamp": "2025-11-17T23:59:16.327719"
+      },
+      "ZCN.TO": {
+        "action": "BUY",
+        "price": 40.310001373291016,
+        "reason": "*   **\ud83d\udd34 BUY: ZCN.TO (BMO S&P/TSX Capped Composite Index ETF)**",
+        "timestamp": "2025-11-17T23:59:16.327903"
+      }
+    }
+  },
+  "2025-11-21": {
+    "date": "2025-11-21",
+    "session": "afternoon",
+    "stocks": {
+      "CM.TO": {
+        "action": "BUY",
+        "price": 118.44999694824219,
+        "reason": "*   **\ud83d\udd34 ALERT #1: CM.TO - BUY:**",
+        "timestamp": "2025-11-21T17:01:15.169824"
+      },
+      "CNR.TO": {
+        "action": "BUY",
+        "price": 131.11000061035156,
+        "reason": "*   **\ud83d\udd34 ALERT #2: CNR.TO - BUY:**",
+        "timestamp": "2025-11-21T17:01:15.172032"
+      },
+      "VDY.TO": {
+        "action": "BUY",
+        "price": 59.56999969482422,
+        "reason": "*   **\ud83d\udd34 ALERT #3: VDY.TO - BUY:**",
+        "timestamp": "2025-11-21T17:01:15.172589"
+      }
+    }
+  }
+}
