@@ -20,7 +20,7 @@ class LongTermStockAgent:
     def __init__(self):
         """Initialize agent for long-term growth investing"""
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
         
         config = load_portfolio_from_secret()
         self.portfolio = config['portfolio']
@@ -583,13 +583,25 @@ Be concise - 2-3 sentences max."""
         return min(score, 10)
     
     def scan_market_opportunities(self):
-        """Scan TSX for long-term opportunities (stocks and ETFs)"""
-        print("🔍 Scanning TSX market for opportunities...")
-        
         opportunities = []
+    
+        # Get recently recommended tickers (last 5 days)
+        recently_recommended = set()
+        recent_recs = self.memory.get_recent_recommendations(days=5)
+        for rec in recent_recs:
+            recently_recommended.add(rec['ticker'])
+        
+        print(f"📝 Filtering out {len(recently_recommended)} recently recommended stocks")
         
         # Scan top TSX stocks and ETFs
         for ticker in self.tsx_top_stocks:
+            # SKIP if recommended in last 5 days (unless price dropped 5%+)
+            if ticker in recently_recommended:
+                # Check if price dropped significantly since recommendation
+                price_dropped_enough = self._check_price_drop_since_recommendation(ticker)
+                if not price_dropped_enough:
+                    continue  # Skip this ticker
+            
             data = self.get_stock_data(ticker)
             if data and data['quality_score'] >= 6:  # Only quality securities
                 # Skip if already in portfolio at high weight
@@ -597,10 +609,33 @@ Be concise - 2-3 sentences max."""
                     continue
                 opportunities.append(data)
         
-        # Sort by quality score and type (separate stocks from ETFs)
+        # Sort by quality score and type
         opportunities.sort(key=lambda x: (x.get('type', 'Stock') == 'Stock', x['quality_score'], x.get('is_undervalued', False)), reverse=True)
         
-        return opportunities[:15]  # Top 15 opportunities
+        return opportunities[:20] # Top 20 opportunities
+    
+    def _check_price_drop_since_recommendation(self, ticker):
+        """Check if stock price dropped 5%+ since we last recommended it"""
+        recent = self.memory.get_recent_recommendations(ticker, days=5)
+        if not recent:
+            return False
+        
+        last_rec = recent[0]
+        recommended_price = last_rec['price']
+        
+        # Get current price
+        try:
+            stock = yf.Ticker(ticker)
+            current_price = stock.history(period='1d')['Close'].iloc[-1]
+            drop_pct = ((current_price - recommended_price) / recommended_price * 100)
+            
+            if drop_pct < -5:  # Dropped 5%+
+                print(f"   💡 {ticker} dropped {drop_pct:.1f}% since recommendation - allowing re-recommendation")
+                return True
+        except:
+            pass
+        
+        return False
     
     def analyze_portfolio(self):
         """Analyze current portfolio holdings"""
@@ -617,6 +652,8 @@ Be concise - 2-3 sentences max."""
                 current_price = data['price']
                 position_value = shares * current_price
                 total_value += position_value
+
+                gain_info = calculate_gain(self.portfolio, ticker, current_price)
                 
                 holding_data = {
                     'ticker': ticker,
@@ -626,11 +663,8 @@ Be concise - 2-3 sentences max."""
                     'quality_score': data['quality_score'],
                     'dividend_yield': data['dividend_yield'],
                     'year_return': data['year_return'],
-                    'recommendation': self._get_holding_recommendation(data, shares, position_value)
+                    'recommendation': self._get_holding_recommendation(data, shares, position_value, gain_info)
                 }
-                
-                # Calculate gains if we have buy price
-                gain_info = calculate_gain(self.portfolio, ticker, current_price)
                 
                 if gain_info:
                     # Add gain tracking data
@@ -649,17 +683,36 @@ Be concise - 2-3 sentences max."""
         
         return holdings_analysis, total_value
     
-    def _get_holding_recommendation(self, data, shares, position_value):
-        """Decide if should HOLD, BUY MORE, or TRIM"""
+    def _get_holding_recommendation(self, data, shares, position_value, gain_info=None):
+        """Decide if should HOLD, BUY MORE, or TRIM - NOW considers gains/losses"""
         quality = data['quality_score']
         
+        # If we have cost basis, use it for smarter recommendations
+        if gain_info:
+            gain_pct = gain_info['gain_pct']
+            
+            # Taking profits logic
+            if gain_pct > 50 and quality < 8:
+                return 'CONSIDER TRIMMING (50%+ gain, quality declining)'
+            
+            if gain_pct > 100:
+                return 'TAKE SOME PROFITS (100%+ gain - secure your win!)'
+            
+            # Averaging down logic  
+            if gain_pct < -20 and quality >= 8:
+                return 'BUY MORE (averaging down on quality stock)'
+            
+            if gain_pct < -30 and quality < 7:
+                return 'STOP LOSS - CONSIDER SELLING (30%+ loss, poor quality)'
+        
+        # Fallback to quality-based recommendations
         if quality >= 8:
-            return 'HOLD/BUY MORE' if (data['type'] != 'ETF' and data['is_undervalued']) else 'HOLD'
+            return 'HOLD/BUY MORE' if (data['type'] != 'ETF' and data.get('is_undervalued')) else 'HOLD'
         elif quality >= 6:
             return 'HOLD'
         else:
             return 'CONSIDER TRIMMING'
-    
+        
     def analyze_watchlist(self):
         """Analyze personal watchlist stocks"""
         if not self.watchlist:
@@ -858,17 +911,31 @@ Current Holdings:
 🤖 INSTRUCTIONS:
 Provide a {'MORNING' if session == 'morning' else 'AFTERNOON'} digest for a LONG-TERM GROWTH investor (not day trading).
 
-IMPORTANT: 
-- If no news is available for a stock, that's NORMAL - base recommendations on fundamentals and technical analysis instead
-- Consider macro context (oil prices affect energy stocks, USD/CAD affects exporters, rates affect banks)
-- Focus on quality (score 7+) and value (reasonable PE ratios)
-- Acknowledge portfolio changes when you see them
-- Don't demand news - most days stocks don't have news and that's fine!
-- **CHECK YOUR MEMORY FIRST** - You have recommended stocks before. Don't repeat the same recommendations unless:
-  * The price has dropped significantly (5%+ from when you last recommended)
-  * New news has emerged that changes the thesis
-  * It's been 5+ days since you recommended it
-- If no news is available for a stock, that's NORMAL - base recommendations on fundamentals and technical analysis instead
+🚫 CRITICAL RECOMMENDATION RULES (YOU MUST FOLLOW):
+1. **DO NOT recommend stocks from "REPEATED RECOMMENDATIONS" section above**
+   - These have been recommended 2+ times in the last 7 days
+   - User has seen them and chosen not to buy
+   - Exception: Only if price dropped 5%+ OR major news changed the thesis
+   
+2. **LEARN from what user actually bought/sold**
+   - Check "PORTFOLIO CHANGES" section
+   - If user keeps ignoring tech stocks → focus on what they DO buy
+   - If user bought all dividend stocks → recommend more dividend stocks
+   
+3. **ACKNOWLEDGE your past performance**
+   - Reference winning trades: "Last week I recommended X, it's up Y%"
+   - Admit mistakes: "I was wrong about X (down Y%), here's what changed"
+   
+4. **Cost basis matters for holdings**
+   - If holding shows "Gain: +50%", consider profit-taking
+   - If holding shows "Gain: -20%", explain if it's still worth holding
+   - Never recommend selling a quality stock just because of short-term losses
+
+5. **FRESH insights only**
+   - Don't repeat the same analysis from previous days
+   - Find NEW stocks, NEW angles, NEW information
+   - Variety keeps recommendations valuable
+📋 DIGEST STRUCTURE:
 
 1. **Market Summary**: Quick TSX overview and key sector trends
 

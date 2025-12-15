@@ -8,9 +8,12 @@ portfolio:
   # Individual Stocks
   
   # ETFs
+  stock.TO:
+    shares: 
+    avg_buy_price:  
 
 # Available cash for new investments (CAD)
-cash: 9000.00
+cash: 
 
 # YOUR personal watchlist - stocks AND ETFs you want to monitor specifically
 # The AI will ALSO scan all major TSX stocks + popular ETFs automatically
