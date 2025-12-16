@@ -1,0 +1,79 @@
+{
+  "portfolio": {
+    "VFV.TO": {
+      "shares": 30,
+      "avg_buy_price": 163.33
+    },
+    "YTSL.NE": {
+      "shares": 210,
+      "avg_buy_price": 24.7976
+    }
+  },
+  "cash": 11803.51,
+  "watchlist": [
+    "CM.TO",
+    "CNR.TO",
+    "XEQT.TO",
+    "VDY.TO",
+    "XAW.TO",
+    "XIC.TO",
+    "ZCN.TO"
+  ],
+  "preferences": {
+    "strategy": "long-term growth",
+    "time_horizon": "5-10 years",
+    "risk_tolerance": "moderate",
+    "preferred_sectors": [
+      "financials",
+      "infrastructure",
+      "technology"
+    ],
+    "avoid_sectors": [
+      "speculative mining",
+      "cannabis",
+      "penny stocks"
+    ],
+    "position_sizing": {
+      "min_cash_reserve": 0,
+      "typical_buy_amount": 2000,
+      "max_buy_amount": 100000
+    },
+    "quality_requirements": {
+      "min_market_cap": 1000000000,
+      "min_quality_score": 6,
+      "prefer_dividend_payers": true,
+      "min_dividend_yield": 2.5
+    },
+    "valuation": {
+      "max_pe_ratio": 30,
+      "prefer_peg_under": 2.0,
+      "avoid_overvalued": true
+    },
+    "diversification": {
+      "max_stocks": 20,
+      "rebalance_threshold": 20
+    },
+    "notes": "Focus on Canadian blue chips with:\n- Strong competitive moats\n- Consistent dividend growth\n- Good management track record\n- Reasonable valuations\n\nNot interested in:\n- High-risk growth stocks\n- Foreign stocks (TSX only)\n- Complex financial instruments\n"
+  },
+  "alerts": {
+    "enabled": true,
+    "price_drop_threshold": -5,
+    "price_spike_threshold": 10,
+    "emergency_buy_amount": 1000,
+    "check_frequency": "30min",
+    "emergency_notification": "email"
+  },
+  "notification": {
+    "method": "email",
+    "email": {
+      "from_email": "rachael.sy.ni@gmail.com",
+      "to_email": "rachael.sy.ni@gmail.com"
+    },
+    "schedule": {
+      "morning_time": "09:30",
+      "afternoon_time": "15:00",
+      "timezone": "America/Toronto",
+      "days": "weekdays"
+    }
+  }
+}

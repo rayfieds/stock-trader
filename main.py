@@ -309,82 +309,133 @@ Be concise - 2-3 sentences max."""
         for ticker in self.watchlist:
             try:
                 stock = yf.Ticker(ticker)
-                hist = stock.history(period='2d', interval='1m')
                 
-                if len(hist) < 2:
+                # Get today's intraday data
+                today_hist = stock.history(period='1d', interval='5m')  # 5-min intervals
+                
+                if today_hist.empty or len(today_hist) < 2:
+                    print(f"   ⚠️ {ticker}: No intraday data available")
                     continue
                 
-                # Get today's open and current price
-                today_data = hist[hist.index.date == datetime.now().date()]
-                if len(today_data) < 2:
-                    continue
+                # Calculate intraday change properly
+                open_price = today_hist['Open'].iloc[0]
+                current_price = today_hist['Close'].iloc[-1]
                 
-                open_price = today_data['Open'].iloc[0]
-                current_price = today_data['Close'].iloc[-1]
+                # Verify prices are reasonable
+                if open_price <= 0 or current_price <= 0:
+                    continue
+                    
                 change_pct = ((current_price - open_price) / open_price * 100)
                 
-                # EMERGENCY: Big drop in quality stock
-                if change_pct < -alert_config.get('price_drop_threshold', -5):
-                    # Check if it's still quality
+                print(f"   📊 {ticker}: Open ${open_price:.2f} → Current ${current_price:.2f} ({change_pct:+.2f}%)")
+                
+                # MORE STRICT THRESHOLD - must be REAL crash, not 0.1%
+                crash_threshold = alert_config.get('price_drop_threshold', -5)
+                
+                # EMERGENCY: Significant drop in quality stock
+                if change_pct <= crash_threshold:  # -5% or worse
+                    print(f"   🚨 {ticker} hit crash threshold ({change_pct:.1f}% <= {crash_threshold}%)")
+                    
+                    # Verify it's still quality BEFORE alerting
                     data = self.get_stock_data(ticker)
                     if data and data.get('quality_score', 0) >= 7:
-                        emergencies.append({
-                            'type': 'FLASH CRASH',
-                            'urgency': 'HIGH',
-                            'ticker': ticker,
-                            'message': f"{ticker} DOWN {change_pct:.1f}% today to ${current_price:.2f}!",
-                            'action': f"Quality stock on sale - BUY ${alert_config.get('emergency_buy_amount', 1000)} NOW",
-                            'reason': f"Quality score {data['quality_score']}/10, temporary panic selling"
-                        })
-                
-                # EMERGENCY: Huge spike (might want to take profits)
-                if change_pct > alert_config.get('price_spike_threshold', 10):
-                    if ticker in self.portfolio:
-                        emergencies.append({
-                            'type': 'PROFIT TAKING',
-                            'urgency': 'MEDIUM',
-                            'ticker': ticker,
-                            'message': f"{ticker} UP {change_pct:.1f}% today!",
-                            'action': f"Consider trimming position - take some profits",
-                            'reason': f"Unusually large gain, might pull back"
-                        })
                         
+                        # Additional filter: Check volume to confirm it's real
+                        avg_volume = today_hist['Volume'].mean()
+                        latest_volume = today_hist['Volume'].iloc[-1]
+                        
+                        print(f"   📈 Volume check: Latest {latest_volume:,.0f} vs Avg {avg_volume:,.0f}")
+                        
+                        # Only alert if volume is above average (real selling, not low liquidity)
+                        if latest_volume > avg_volume * 0.5:
+                            emergencies.append({
+                                'type': 'FLASH CRASH',
+                                'urgency': 'HIGH',
+                                'ticker': ticker,
+                                'message': f"{ticker} DOWN {change_pct:.1f}% today to ${current_price:.2f}",
+                                'action': f"Quality stock on sale - consider buying ${alert_config.get('emergency_buy_amount', 1000)}",
+                                'reason': f"Quality score {data['quality_score']}/10, {abs(change_pct):.1f}% drop is unusual"
+                            })
+                        else:
+                            print(f"   ⚠️ Low volume - likely not a real crash, skipping alert")
+                    else:
+                        print(f"   ⚠️ Quality score too low ({data.get('quality_score', 0) if data else 'N/A'}/10), skipping alert")
+                
+                # EMERGENCY: Huge spike (profit-taking opportunity)
+                spike_threshold = alert_config.get('price_spike_threshold', 10)
+                
+                if change_pct >= spike_threshold and ticker in self.portfolio:
+                    print(f"   📈 {ticker} hit spike threshold ({change_pct:.1f}% >= {spike_threshold}%)")
+                    emergencies.append({
+                        'type': 'PROFIT TAKING',
+                        'urgency': 'MEDIUM',
+                        'ticker': ticker,
+                        'message': f"{ticker} UP {change_pct:.1f}% today!",
+                        'action': f"Consider trimming position - take some profits",
+                        'reason': f"Unusually large {change_pct:.1f}% gain may not sustain"
+                    })
+                    
             except Exception as e:
+                print(f"   ❌ Error checking {ticker}: {e}")
                 continue
         
         # Check portfolio holdings for danger zones
-        for ticker, shares in self.portfolio.items():
+        portfolio_alerts = self._check_portfolio_danger_zones()
+        emergencies.extend(portfolio_alerts)
+        
+        # IMPORTANT: Limit total alerts to avoid spam
+        if len(emergencies) > 3:
+            print(f"   ⚠️ {len(emergencies)} alerts found - limiting to top 3 most urgent")
+            # Sort by urgency and take top 3
+            emergencies = sorted(emergencies, 
+                            key=lambda x: (x['urgency'] == 'HIGH', abs(float(x['message'].split()[2].rstrip('%')))),
+                            reverse=True)[:3]
+        
+        print(f"   ✅ Found {len(emergencies)} emergency alerts")
+        return emergencies
+    
+    def _check_portfolio_danger_zones(self):
+        danger_alerts = []
+        
+        for ticker, holding_info in self.portfolio.items():
             try:
-                stock = yf.Ticker(ticker)
-                hist = stock.history(period='5d')
+                shares = holding_info.get('shares', 0) if isinstance(holding_info, dict) else holding_info
                 
-                if len(hist) < 2:
+                stock = yf.Ticker(ticker)
+                hist = stock.history(period='10d')  # Look at last 10 days
+                
+                if len(hist) < 5:
                     continue
                 
-                # Check if dropping below key support
+                # Check if dropping significantly from recent high
                 current = hist['Close'].iloc[-1]
-                week_high = hist['High'].max()
-                drop_from_high = ((current - week_high) / week_high * 100)
+                recent_high = hist['High'].max()
+                drop_from_high = ((current - recent_high) / recent_high * 100)
                 
-                if drop_from_high < -15:  # Down >15% from recent high
-                    # Get news to see if fundamentals changed
-                    news = self.get_news_sentiment(ticker, days=2)
+                # MORE STRICT: Only alert on REAL danger (>15% drop)
+                if drop_from_high < -15:
+                    # Get news context
+                    news = self.get_news_sentiment(ticker, days=3)
                     
-                    emergencies.append({
+                    # Calculate position value
+                    position_value = shares * current
+                    
+                    danger_alerts.append({
                         'type': 'PORTFOLIO ALERT',
                         'urgency': 'HIGH',
                         'ticker': ticker,
-                        'message': f"{ticker} down {drop_from_high:.1f}% from recent high",
-                        'action': f"Review position - check if fundamentals deteriorated",
-                        'reason': f"Significant decline, may need to sell or average down",
-                        'news_summary': news['analysis'] if news else "No recent news"
+                        'message': f"{ticker} down {drop_from_high:.1f}% from 10-day high (${position_value:,.0f} position)",
+                        'action': f"Review fundamentals - may need to sell or average down",
+                        'reason': f"Significant decline from ${recent_high:.2f} to ${current:.2f}",
+                        'news_summary': news['analysis'][:200] if news else "No recent news found"
                     })
                     
             except Exception as e:
                 continue
         
-        return emergencies
-    
+        return danger_alerts
+
+
     def _get_tsx_top_stocks(self):
         """Get TSX top stocks and popular Canadian ETFs"""
         # TSX 60 + common large caps + Popular Canadian ETFs
@@ -583,53 +634,91 @@ Be concise - 2-3 sentences max."""
         return min(score, 10)
     
     def scan_market_opportunities(self):
-        opportunities = []
+        """Scan TSX for long-term opportunities (stocks and ETFs)
     
-        # Get recently recommended tickers (last 5 days)
+        IMPROVED: Applies strict filtering to avoid recommending everything
+        """
+        print("🔍 Scanning TSX market for opportunities...")
+        
+        opportunities = []
+        
+        # Get recently recommended tickers (last 7 days, increased from 5)
         recently_recommended = set()
-        recent_recs = self.memory.get_recent_recommendations(days=5)
+        recent_recs = self.memory.get_recent_recommendations(days=7)
         for rec in recent_recs:
             recently_recommended.add(rec['ticker'])
         
-        print(f"📝 Filtering out {len(recently_recommended)} recently recommended stocks")
+        print(f"   🚫 Filtering out {len(recently_recommended)} recently recommended stocks")
         
         # Scan top TSX stocks and ETFs
         for ticker in self.tsx_top_stocks:
-            # SKIP if recommended in last 5 days (unless price dropped 5%+)
+            # SKIP if recommended in last 7 days (unless price dropped significantly)
             if ticker in recently_recommended:
-                # Check if price dropped significantly since recommendation
                 price_dropped_enough = self._check_price_drop_since_recommendation(ticker)
                 if not price_dropped_enough:
-                    continue  # Skip this ticker
+                    continue
             
             data = self.get_stock_data(ticker)
-            if data and data['quality_score'] >= 6:  # Only quality securities
-                # Skip if already in portfolio at high weight
-                if ticker in self.portfolio:
+            
+            # STRICTER QUALITY FILTER: Must be 7+ (was 6+)
+            if not data or data['quality_score'] < 7:
+                continue
+            
+            # Skip if already in portfolio
+            if ticker in self.portfolio:
+                continue
+            
+            # Additional filters for stocks
+            if data['type'] == 'Stock':
+                # Must have dividend yield OR be undervalued
+                if data['dividend_yield'] < 2.5 and not data.get('is_undervalued'):
                     continue
-                opportunities.append(data)
+                
+                # Skip overvalued stocks
+                if data.get('pe_ratio') and data['pe_ratio'] > 30:
+                    continue
+            
+            # Additional filters for ETFs
+            if data['type'] == 'ETF':
+                # Must have low expense ratio
+                if data.get('expense_ratio') and data['expense_ratio'] > 0.5:
+                    continue
+            
+            opportunities.append(data)
         
-        # Sort by quality score and type
-        opportunities.sort(key=lambda x: (x.get('type', 'Stock') == 'Stock', x['quality_score'], x.get('is_undervalued', False)), reverse=True)
+        # Sort by quality score and valuation
+        opportunities.sort(
+            key=lambda x: (
+                x.get('type', 'Stock') == 'Stock',
+                x['quality_score'],
+                x.get('is_undervalued', False),
+                x.get('dividend_yield', 0)
+            ),
+            reverse=True
+        )
         
-        return opportunities[:20] # Top 20 opportunities
+        # LIMIT results to top 10 (was 20)
+        return opportunities[:10]
     
     def _check_price_drop_since_recommendation(self, ticker):
-        """Check if stock price dropped 5%+ since we last recommended it"""
-        recent = self.memory.get_recent_recommendations(ticker, days=5)
+        """Check if stock price dropped 7%+ since last recommendation (increased from 5%)"""
+        recent = self.memory.get_recent_recommendations(ticker, days=7)
         if not recent:
             return False
         
         last_rec = recent[0]
         recommended_price = last_rec['price']
         
-        # Get current price
         try:
             stock = yf.Ticker(ticker)
-            current_price = stock.history(period='1d')['Close'].iloc[-1]
+            hist = stock.history(period='1d')
+            if hist.empty:
+                return False
+                
+            current_price = hist['Close'].iloc[-1]
             drop_pct = ((current_price - recommended_price) / recommended_price * 100)
             
-            if drop_pct < -5:  # Dropped 5%+
+            if drop_pct < -7:  # Dropped 7%+ (was 5%)
                 print(f"   💡 {ticker} dropped {drop_pct:.1f}% since recommendation - allowing re-recommendation")
                 return True
         except:
